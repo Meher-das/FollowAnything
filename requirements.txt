@@ -1,0 +1,10 @@
+scikit-image
+open_clip_torch
+rtsp
+opencv-python
+torch
+Pillow
+scipy
+numpy
+matplotlib
+mavsdk
