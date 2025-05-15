@@ -3,6 +3,7 @@
 # Licensed under The MIT License
 # Written by Alaa Maalouf (alaam@mit.edu)
 # --------------------------------------------------------
+
 import sys
 import glob
 import cv2
@@ -106,49 +107,77 @@ parser.add_argument('--sort_by', default="area",  help='stability_score|area|pre
 args = parser.parse_args()
 cmap = matplotlib.cm.get_cmap("jet")
 
+# Initialising choice of detector and tracker
 if args.detect == 'clip':
     tokenizer = open_clip.get_tokenizer('ViT-B-32')
     clip, _, clip_preprocess = open_clip.create_model_and_transforms('ViT-B-32', pretrained='laion2b_s34b_b79k')
     clip = clip.cuda()
+
 elif  args.detect == 'dino':
     pass
+
 if args.tracker == 'siammask':
     sys.path.append("./SiamMask")
     sys.path.append("./SiamMask/experiments/siammask_sharp")
     from SiamMask.tools.test import *
 
+### -------------- Helper functions for Masking and Visualization -------------- ###
+
+# Creates visualization overlays for multiple classes
 def multiclass_vis(class_labels, img_to_viz, num_of_labels, np_used = False,alpha = 0.5):
+
     _overlay = img_to_viz.astype(float) / 255.0
+
     if np_used:
          viz = cmap(class_labels/num_of_labels)[..., :3]
+
     else:
          class_labels = class_labels.detach().cpu().numpy().astype(float)
          viz = cmap((class_labels/num_of_labels))[..., :3]
+
     _overlay =  alpha * viz + (1-alpha) * _overlay 
     s_overlay = cv2.cvtColor(np.float32(_overlay), cv2.COLOR_BGR2RGB)  
-
     return _overlay
 
-
+# Converts boolean mask to integer mask
 def bool_mask_to_integer(mask):
+
     mask_obj = mask[0]
     img = np.zeros((mask_obj.shape[0], mask_obj.shape[1]))
     img[mask_obj] = 1
     return img
 
+# Adding visualannotations upon multiclass overlays
 def get_vis_anns(anns,img_to_viz):
    
     count = 1
     dum = anns[0]['segmentation']
     img = np.zeros((dum.shape[0], dum.shape[1]))
+
     for ann in anns:
         m = ann['segmentation']
         img[m] = count
         count+=1
+
     _overlay = multiclass_vis(img, img_to_viz, count, np_used = True)
     return _overlay
-    
+
+# DINO result ovelay
+def get_dino_result_if_needed(cfg, frame, class_labels):
+        #if cfg['plot visualizations'] or cfg["save_images_to"]:
+        _overlay = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        _overlay = cv2.resize(_overlay, (cfg['desired_width'],cfg['desired_height']))
+        _overlay = multiclass_vis(class_labels, _overlay, len(queries))
+        return _overlay
+        #plot_and_save_if_neded(cfg, _overlay, "DINO-result-only")
+
+### ---------------------------------------------------------------------------- ###    
+
+### ---------- Getting necessary detectors, trackers and queries --------------- ###
+
+# Query features for clip or non-clip detections
 def get_queries(cfg):
+
     queries = OrderedDict({})
     if cfg['detect'] == 'clip':
         input_queries = cfg['text_query']
@@ -186,13 +215,14 @@ def get_queries(cfg):
         else:
             return queries
 
-
+# Using segtracker
 def get_aot_tracker_with_sam():
     ###modify args if needed###
     segtracker = SegTracker(segtracker_args, sam_args, aot_args)
     segtracker.restart_tracker()
     return segtracker
 
+# Using siammask for tracker
 def get_siammask_tracker(siam_cfg, device):
 
     from custom import Custom
@@ -205,6 +235,33 @@ def get_siammask_tracker(siam_cfg, device):
 
     return siammask
 
+# Computing area and center of bounding box
+def compute_area_and_center(bounding_shape):
+    x = 0; y = 1
+    bounding_shape = bounding_shape[0]#(bounding_shape)
+    idx_right = np.argmax(bounding_shape[:,x]) 
+    idx_left = np.argmin(bounding_shape[:,x]) 
+    idx_up = np.argmax(bounding_shape[:,y]) 
+    idx_bottum = np.argmin(bounding_shape[:,y]) 
+
+
+    right_point = bounding_shape[idx_right]
+    left_point = bounding_shape[idx_left]
+    up_point = bounding_shape[idx_up]
+    bottum_point = bounding_shape[idx_bottum]
+
+
+    #area, center = compute_area_and_center(right_point, left_point, up_point, bottum_point)
+    area = np.linalg.norm(up_point - left_point)* np.linalg.norm(up_point - right_point)
+    center = np.mean([right_point, left_point, up_point, bottum_point], axis = 0)
+   
+    return area, center
+
+### ---------------------------------------------------------------------------- ###    
+
+### ---------------------------------- Plots ----------------------------------- ###
+
+# Plotting ovelay, simularity overlap
 def plot_similarity_if_neded(cfg, frame, similarity_rel, alpha = 0.5):
     if cfg['plot visualizations'] or cfg["save_images_to"]:
         img_to_viz = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -216,7 +273,7 @@ def plot_similarity_if_neded(cfg, frame, similarity_rel, alpha = 0.5):
         _overlay = cv2.cvtColor(np.float32(_overlay), cv2.COLOR_BGR2RGB)
         plot_and_save_if_neded(cfg, _overlay, "DINO-CLIP-result")
     
-            
+# Plotting and Saving            
 def plot_and_save_if_neded(cfg, image_to_plot, stage_and_task, count, multiply = 1):
     global mission_counter
 
@@ -228,14 +285,48 @@ def plot_and_save_if_neded(cfg, image_to_plot, stage_and_task, count, multiply =
         #if os.path.exists(filename):
         cv2.imwrite(file_name,image_to_plot*multiply)
 
-def get_dino_result_if_needed(cfg, frame, class_labels):
-        #if cfg['plot visualizations'] or cfg["save_images_to"]:
-        _overlay = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        _overlay = cv2.resize(_overlay, (cfg['desired_width'],cfg['desired_height']))
-        _overlay = multiclass_vis(class_labels, _overlay, len(queries))
-        return _overlay
-        #plot_and_save_if_neded(cfg, _overlay, "DINO-result-only")
+# Frames to Video
+def create_video_from_images(cfg):
 
+    import glob
+    vfile= '{}/video_from_images.avi'.format(cfg['path_to_video'])
+    fileidx = 0
+    if not  os.path.exists(vfile):
+        img_array = []
+        if cfg['video_order'] == 'any':
+            for filename in os.listdir(cfg['path_to_video']):
+                filename = os.path.join(cfg['path_to_video'],filename )
+                img = cv2.imread(filename)
+                height, width, layers = img.shape
+                size = (width,height)
+                img_array.append(img)
+                fileidx+=1
+        else:
+            while 1:
+                filename = os.path.join(cfg['path_to_video'], f"{fileidx:06d}.png")
+                if not os.path.exists(filename): 
+                    filename = os.path.join(cfg['path_to_video'], "1_{}.jpg".format(fileidx))#f"{fileidx}.jpg")
+                if not os.path.exists(filename):    
+                    break
+                img = cv2.imread(filename)
+                height, width, layers = img.shape
+                size = (width,height)
+                img_array.append(img)
+                fileidx+=1
+
+        out = cv2.VideoWriter('{}/video_from_images.avi'.format(cfg['path_to_video']),cv2.VideoWriter_fourcc(*'DIVX'), 15, size)
+         
+        for i in range(len(img_array)):
+            out.write(img_array[i])
+        out.release()
+    cfg['path_to_video'] = vfile
+    return cv2.VideoCapture(cfg['path_to_video']) 
+
+### ---------------------------------------------------------------------------- ###
+
+### ------------------------ Main Detection and Tracking functions ------------- ###
+
+# Automatic object detection 
 def automatic_object_detection(vit_model, sam, video, queries, cfg, vehicle):
     count=0; detecton_count = 0
     detected = False
@@ -249,7 +340,6 @@ def automatic_object_detection(vit_model, sam, video, queries, cfg, vehicle):
                 if not read_one_frame and os.path.exists(cfg["path_to_video"]) and cfg['fps']<1:
                     print("Finished reading video...")
                     exit(0)
-
             
             frameshow = cv2.resize(frame, (cfg['desired_width'],cfg['desired_height']))
             saved_frame = copy.copy(frameshow)   
@@ -263,8 +353,7 @@ def automatic_object_detection(vit_model, sam, video, queries, cfg, vehicle):
                 print("Sam generated {} masks".format(len(masks)))
                 masks_of_sam = get_vis_anns(masks, frameshow)
                 plot_and_save_if_neded(cfg, masks_of_sam, 'SAM-result', count,multiply = 255)
-                
-            
+                            
             t = time.time()
             if cfg['detect'] == "dino":
                 frame_preprocessed = preprocess_frame(frame, cfg=cfg)
@@ -318,7 +407,6 @@ def automatic_object_detection(vit_model, sam, video, queries, cfg, vehicle):
                     else:
                         all_masks_sims.append(mask_similarity[0]) 
                         if float(mask_similarity[0]) > float(cfg['class_threshold']):  thresh[m] = 1
-
                         
                 #if  len(queries.items()) == 1 and cfg['query_type'] == 'text':      #if mask_similarity[0] > 0.9:
                 #    sorted_sims = np.argsort(all_masks_sims)
@@ -374,11 +462,9 @@ def automatic_object_detection(vit_model, sam, video, queries, cfg, vehicle):
                         thresh[thresh == feat] = 255
                         thresh[idx_to_try]= 0
                     thresh[thresh != 255] = 0
-                    
-            
+                                
             if cfg['plot_visualizations'] or cfg['save_images_to']:
                     dino_plot = get_dino_result_if_needed(cfg, frame, class_labels) 
-            
 
             detections = [] 
             all_masks = np.zeros((thresh.shape[0],thresh.shape[1]))
@@ -416,7 +502,6 @@ def automatic_object_detection(vit_model, sam, video, queries, cfg, vehicle):
                             cv2.rectangle(dino_plot,(x,y),(x+w,y+h),(255,0,0),3)
                             cv2.rectangle(frameshow,(x,y),(x+w,y+h),(255,0,0),3)
                         
-                     
             count +=1
             if len(detections)>0:
                 plot_and_save_if_neded(cfg, dino_plot, "DINO-CLIP-result",count, multiply =255)
@@ -433,28 +518,7 @@ def automatic_object_detection(vit_model, sam, video, queries, cfg, vehicle):
             #drone_action_wrapper_while_detecting(vehicle,cfg)
             print("Time took: ",time.time()-s)  
 
-
-def compute_area_and_center(bounding_shape):
-    x = 0; y = 1
-    bounding_shape = bounding_shape[0]#(bounding_shape)
-    idx_right = np.argmax(bounding_shape[:,x]) 
-    idx_left = np.argmin(bounding_shape[:,x]) 
-    idx_up = np.argmax(bounding_shape[:,y]) 
-    idx_bottum = np.argmin(bounding_shape[:,y]) 
-
-
-    right_point = bounding_shape[idx_right]
-    left_point = bounding_shape[idx_left]
-    up_point = bounding_shape[idx_up]
-    bottum_point = bounding_shape[idx_bottum]
-
-
-    #area, center = compute_area_and_center(right_point, left_point, up_point, bottum_point)
-    area = np.linalg.norm(up_point - left_point)* np.linalg.norm(up_point - right_point)
-    center = np.mean([right_point, left_point, up_point, bottum_point], axis = 0)
-   
-    return area, center
-
+# Tracking with siammask
 def track_object_with_siammask(siammask, detections, video, cfg, tracker_cfg, vehicle):
     x, y, w, h = detections[0]#todo
     print(x, y, w, h)
@@ -502,44 +566,15 @@ def track_object_with_siammask(siammask, detections, video, cfg, tracker_cfg, ve
     print('SiamMask Time: {:02.1f}s Speed: {:3.1f}fps (with visulization!)'.format(toc, fps))
 
 
-def create_video_from_images(cfg):
-
-    import glob
-    vfile= '{}/video_from_images.avi'.format(cfg['path_to_video'])
-    fileidx = 0
-    if not  os.path.exists(vfile):
-        img_array = []
-        if cfg['video_order'] == 'any':
-            for filename in os.listdir(cfg['path_to_video']):
-                filename = os.path.join(cfg['path_to_video'],filename )
-                img = cv2.imread(filename)
-                height, width, layers = img.shape
-                size = (width,height)
-                img_array.append(img)
-                fileidx+=1
-        else:
-            while 1:
-                filename = os.path.join(cfg['path_to_video'], f"{fileidx:06d}.png")
-                if not os.path.exists(filename): 
-                    filename = os.path.join(cfg['path_to_video'], "1_{}.jpg".format(fileidx))#f"{fileidx}.jpg")
-                if not os.path.exists(filename):    
-                    break
-                img = cv2.imread(filename)
-                height, width, layers = img.shape
-                size = (width,height)
-                img_array.append(img)
-                fileidx+=1
-
-        out = cv2.VideoWriter('{}/video_from_images.avi'.format(cfg['path_to_video']),cv2.VideoWriter_fourcc(*'DIVX'), 15, size)
-         
-        for i in range(len(img_array)):
-            out.write(img_array[i])
-        out.release()
-    cfg['path_to_video'] = vfile
-    return cv2.VideoCapture(cfg['path_to_video']) 
-
 def init_system():
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    #device = torch.device('cuda' or 'mps' if torch.cuda.is_available() else 'cpu')
+    if torch.cuda.is_available():
+        device = torch.device('cuda')
+    elif getattr(torch.backends, 'mps', None) and torch.backends.mps.is_available():
+        device = torch.device('mps')
+    else:
+        device = torch.device('cpu')
+
     torch.backends.cudnn.benchmark = True
     cfg = vars(args)
     
@@ -623,7 +658,7 @@ def init_system():
 def create_dir_if_doesnt_exists(dir_to_create):
     if not os.path.exists(dir_to_create): os.mkdir(dir_to_create)
 
-
+### -------------------------------- Mouse Callbacks ------------------ ###
 
 # Called every time a mouse event happen
 def on_mouse(event, x, y, flags, userdata):
@@ -690,7 +725,7 @@ def detect_by_click(sam , video, cfg, vehicle):
 
             return None, masks, frame 
 
-
+### ------------------------------------------------------------------- ###
 def compute_drone_action_while_tracking(mean_point, cfg, vehicle):
     global mean
     global postion_vector_queue
@@ -800,6 +835,7 @@ def get_mean_point(pred_mask, bounding_shape = None):
             return None ## restart mission
     mean_point = [int(object_indx[0].mean()),  int(object_indx[1].mean())]
     return mean_point
+
 def detect_by_box(sam , video, cfg, vehicle): 
     cv2.namedWindow('Choose_object')#, cv2.WINDOW_NORMAL)
     cv2.setMouseCallback('Choose_object', on_mouse)
@@ -867,6 +903,7 @@ def detect_object(cfg, detector, segmentor, video, queries):
         else:
             masks_of_sam = None 
     return bounding_boxes, masks_of_sam, saved_frame
+
 def start_mission(device, tracker_cfg, cfg, tracker, detector, segmentor, queries, video, vehicle):
     global mission_counter
     mission_counter +=1
