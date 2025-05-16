@@ -1,7 +1,18 @@
+# Changes made for Project (CS508L)
+Listed the dependency requirements into a text file :
+
+To setup environment :
+
+1. In terminal switch to the 'FollowAnything' directory as the main directory.
+2. Create a virtual environment there using the script ```python -m venv .venv```
+3. Activate the virtual environment (Method depending on OS)
+4. install the reqirements using the command ```pip install -r requirements.txt```
+5. Follow the instructions Provided from Segment-and-Track-Anything and Siam Mask repositories as mentioned below to setup the pretrained weight files for use.
+
 # Follow Anything
 **[📰 Paper](https://arxiv.org/abs/2308.05737)** | **[📹 Explainer Video](https://www.youtube.com/watch?v=6Mgt3EPytrw)**
 #### *Follow Anything:* Open-set detection, tracking, and following in real-time.
-
+  
 
 🏛️ **[1 CSAIL, MIT](https://www.csail.mit.edu/)**  | **[2 SEAS, Harvard](https://www.csail.mit.edu/](https://seas.harvard.edu/)https://seas.harvard.edu/)**
 
