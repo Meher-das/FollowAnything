@@ -1,4 +1,4 @@
-# Changes made for Project (CS508L)
+# Changes made for Project (CS518L)
 Listed the dependency requirements into a text file :
 
 To setup environment :
