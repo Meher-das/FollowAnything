@@ -9,6 +9,17 @@ To setup environment :
 4. install the reqirements using the command ```pip install -r requirements.txt```
 5. Follow the instructions Provided from Segment-and-Track-Anything and Siam Mask repositories as mentioned below to setup the pretrained weight files for use.
 
+# Objective of Project
+To detect query objects from video footage in real time using edge devices like Raspberry Pi for use onboard a drone.
+
+The original methodology requires us to use SAM to segment the frame from video initially. Usage of SAM involves heavy computation which is not feasible for use on devices like Pi. So instead we intend to detect faster by solely grouping DINO features.
+
+DINO runtime can further be sped up using two optimizations : 
+* Quantization (Reducing the numerical precision of datatypes and mathematical operations)
+* Tracing (Converting Dynamic graphs into Static graphs)
+
+Redetection can also be automated using cross-trajectory stored ViT features.
+
 # Follow Anything
 **[📰 Paper](https://arxiv.org/abs/2308.05737)** | **[📹 Explainer Video](https://www.youtube.com/watch?v=6Mgt3EPytrw)**
 #### *Follow Anything:* Open-set detection, tracking, and following in real-time.
