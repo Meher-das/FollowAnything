@@ -20,6 +20,9 @@ DINO runtime can further be sped up using two optimizations on the DINO model :
 
 Redetection can also be automated using cross-trajectory stored ViT features.
 
+# Challenges with implementation
+Encountered issues when setting up the project with CUDA_HOME environment variable usage. The PyTorch-Correlation-Extension module results in errors with usage of the CUDA_HOME environment variable and hence couldn't run.
+
 # Follow Anything
 **[📰 Paper](https://arxiv.org/abs/2308.05737)** | **[📹 Explainer Video](https://www.youtube.com/watch?v=6Mgt3EPytrw)**
 #### *Follow Anything:* Open-set detection, tracking, and following in real-time.
