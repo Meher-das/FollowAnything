@@ -14,7 +14,7 @@ To detect query objects from video footage in real time using edge devices like 
 
 The original methodology requires us to use SAM to segment the frame from video initially. Usage of SAM involves heavy computation which is not feasible for use on devices like Pi. So instead we intend to detect faster by solely grouping DINO features.
 
-DINO runtime can further be sped up using two optimizations : 
+DINO runtime can further be sped up using two optimizations on the DINO model : 
 * Quantization (Reducing the numerical precision of datatypes and mathematical operations)
 * Tracing (Converting Dynamic graphs into Static graphs)
 
